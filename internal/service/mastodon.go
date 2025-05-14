@@ -1,13 +1,14 @@
 package service
 
 import (
-	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"time"
 
+	"context"
+
+	"github.com/mattn/go-mastodon"
 	"go.orx.me/apps/unifeed/internal/conf"
 )
 
@@ -42,7 +43,7 @@ type Item struct {
 }
 
 func NewMastodonService() *MastodonService {
-	return &MastodonService{client: &http.Client{Timeout: 10 * time.Second}}
+	return &MastodonService{}
 }
 
 // 拉取 Mastodon timeline 并生成 RSS XML
@@ -50,35 +51,33 @@ func (s *MastodonService) TimelineToRSS(feed conf.Feed) (string, error) {
 	if feed.Mastodon.Host == "" || feed.Mastodon.Token == "" {
 		return "", fmt.Errorf("mastodon config required")
 	}
-	url := fmt.Sprintf("%s/api/v1/timelines/home", feed.Mastodon.Host)
-	req, err := http.NewRequest("GET", url, nil)
+	client := mastodon.NewClient(&mastodon.Config{
+		Server:      feed.Mastodon.Host,
+		AccessToken: feed.Mastodon.Token,
+	})
+	ctx := context.Background()
+	statuses, err := client.GetTimelineHome(ctx, nil)
 	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+feed.Mastodon.Token)
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("mastodon api error: %s", resp.Status)
-	}
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	// 这里只解析部分字段，实际可根据需要扩展
-	var statuses []MastodonStatus
-	if err := json.Unmarshal(body, &statuses); err != nil {
 		return "", err
 	}
 	items := make([]Item, 0, len(statuses))
 	for _, st := range statuses {
+		// 构建 media HTML
+		mediaHTML := ""
+		for _, m := range st.MediaAttachments {
+			switch m.Type {
+			case "image":
+				mediaHTML += fmt.Sprintf(`<br><img src="%s" alt="%s"/>`, m.URL, m.Description)
+			case "video", "gifv":
+				mediaHTML += fmt.Sprintf(`<br><video controls src="%s" poster="%s">%s</video>`, m.URL, m.PreviewURL, m.Description)
+			case "audio":
+				mediaHTML += fmt.Sprintf(`<br><audio controls src="%s">%s</audio>`, m.URL, m.Description)
+			}
+		}
 		items = append(items, Item{
 			Title:       st.Content,
 			Link:        st.URL,
-			Description: st.Content,
+			Description: st.Content + mediaHTML,
 			PubDate:     st.CreatedAt.Format(time.RFC1123Z),
 		})
 	}
