@@ -110,8 +110,13 @@ func (s *MastodonService) TimelineToRSS(feed conf.Feed) (string, error) {
 			link = st.Reblog.URL
 		}
 
+		var title = st.Content
+		if len(title) == 0 && st.Reblog != nil {
+			title = st.Reblog.Content
+		}
+
 		items = append(items, RSSItem{
-			Title:       st.Content,
+			Title:       title,
 			Link:        link,
 			Description: st.Content + mediaHTML,
 			PubDate:     st.CreatedAt.Format(time.RFC1123Z),
