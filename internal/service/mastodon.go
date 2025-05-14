@@ -9,7 +9,6 @@ import (
 	"context"
 
 	"github.com/mattn/go-mastodon"
-	"github.com/mmcdole/gofeed"
 	"go.orx.me/apps/unifeed/internal/conf"
 )
 
@@ -30,13 +29,19 @@ type RSS struct {
 	Channel Channel  `xml:"channel"`
 }
 
-type Channel struct {
-	Title string `xml:"title"`
-	Link  string `xml:"link"`
-	Items []Item `xml:"item"`
+type RSSItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	PubDate     string `xml:"pubDate"`
+	GUID        string `xml:"guid"`
 }
 
-type Item gofeed.Item
+type Channel struct {
+	Title string    `xml:"title"`
+	Link  string    `xml:"link"`
+	Items []RSSItem `xml:"item"`
+}
 
 func NewMastodonService() *MastodonService {
 	return &MastodonService{}
@@ -56,7 +61,7 @@ func (s *MastodonService) TimelineToRSS(feed conf.Feed) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	items := make([]Item, 0, len(statuses))
+	items := make([]RSSItem, 0, len(statuses))
 	for _, st := range statuses {
 		// 构建 media HTML
 		mediaHTML := ""
@@ -70,42 +75,12 @@ func (s *MastodonService) TimelineToRSS(feed conf.Feed) (string, error) {
 				mediaHTML += fmt.Sprintf(`<br><audio controls src="%s">%s</audio>`, m.URL, m.Description)
 			}
 		}
-		guid := string(st.ID)
-		authors := []*gofeed.Person{{
-			Name:  st.Account.DisplayName,
-			Email: "",
-		}}
-		categories := make([]string, 0, len(st.Tags))
-		for _, tag := range st.Tags {
-			categories = append(categories, tag.Name)
-		}
-		enclosures := []*gofeed.Enclosure{}
-		for _, m := range st.MediaAttachments {
-			if m.URL != "" {
-				enclosures = append(enclosures, &gofeed.Enclosure{
-					URL:  m.URL,
-					Type: m.Type,
-				})
-			}
-		}
-		var image *gofeed.Image
-		if len(st.MediaAttachments) > 0 && st.MediaAttachments[0].PreviewURL != "" {
-			image = &gofeed.Image{
-				URL:   st.MediaAttachments[0].PreviewURL,
-				Title: st.MediaAttachments[0].Description,
-			}
-		}
-		items = append(items, Item{
+		items = append(items, RSSItem{
 			Title:       st.Content,
 			Link:        st.URL,
 			Description: st.Content + mediaHTML,
-			Published:   st.CreatedAt.Format(time.RFC1123Z),
-			GUID:        guid,
-			Content:     st.Content,
-			Authors:     authors,
-			Categories:  categories,
-			Enclosures:  enclosures,
-			Image:       image,
+			PubDate:     st.CreatedAt.Format(time.RFC1123Z),
+			GUID:        string(st.ID),
 		})
 	}
 	rss := RSS{

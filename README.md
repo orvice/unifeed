@@ -8,18 +8,19 @@ unifeed is a Go-based RSS aggregation service. It allows you to configure Mastod
 - Easy to extend and customize
 
 ## Example Config File (config.yaml)
+> Supports both YAML and JSON format (fields: feeds, name, mastodon, bluesky, etc.)
 ```yaml
-Feeds:
-  - Name: mastodon-demo
-    Mastodon:
-      Host: https://mastodon.social
-      Token: your-mastodon-token
-  - Name: bluesky-demo
-    Bluesky:
-      Host: https://bsky.social
-      Handle: user.bsky.social
-      AppKey: your-app-key
-      AppSecret: your-app-secret
+feeds:
+  - name: mastodon-demo
+    mastodon:
+      host: https://mastodon.social
+      token: your-mastodon-token
+  - name: bluesky-demo
+    bluesky:
+      host: https://bsky.social
+      handle: user.bsky.social
+      app_key: your-app-key
+      app_secret: your-app-secret
 ```
 
 ## Usage
