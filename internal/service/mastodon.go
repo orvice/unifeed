@@ -104,9 +104,15 @@ func (s *MastodonService) TimelineToRSS(feed conf.Feed) (string, error) {
 		if len(st.MediaAttachments) > 0 && st.MediaAttachments[0].PreviewURL != "" {
 			image = st.MediaAttachments[0].PreviewURL
 		}
+
+		var link = st.URL
+		if st.Reblog != nil {
+			link = st.Reblog.URL
+		}
+
 		items = append(items, RSSItem{
 			Title:       st.Content,
-			Link:        st.URL,
+			Link:        link,
 			Description: st.Content + mediaHTML,
 			PubDate:     st.CreatedAt.Format(time.RFC1123Z),
 			GUID:        string(st.ID),
