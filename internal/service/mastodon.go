@@ -73,9 +73,16 @@ func (s *MastodonService) TimelineToRSS(feed conf.Feed) (string, error) {
 	}
 	items := make([]RSSItem, 0, len(statuses))
 	for _, st := range statuses {
+		status := st
+		isReblog := false
+		if st.Reblog != nil {
+			status = st.Reblog
+			isReblog = true
+		}
+
 		// 构建 media HTML
 		mediaHTML := ""
-		for _, m := range st.MediaAttachments {
+		for _, m := range status.MediaAttachments {
 			switch m.Type {
 			case "image":
 				mediaHTML += fmt.Sprintf(`<br><img src="%s" alt="%s"/>`, m.URL, m.Description)
@@ -85,13 +92,13 @@ func (s *MastodonService) TimelineToRSS(feed conf.Feed) (string, error) {
 				mediaHTML += fmt.Sprintf(`<br><audio controls src="%s">%s</audio>`, m.URL, m.Description)
 			}
 		}
-		author := st.Account.DisplayName
-		categories := make([]string, 0, len(st.Tags))
-		for _, tag := range st.Tags {
+		author := status.Account.DisplayName
+		categories := make([]string, 0, len(status.Tags))
+		for _, tag := range status.Tags {
 			categories = append(categories, tag.Name)
 		}
 		var enclosure *Enclosure
-		for _, m := range st.MediaAttachments {
+		for _, m := range status.MediaAttachments {
 			if m.URL != "" {
 				enclosure = &Enclosure{
 					URL:  m.URL,
@@ -101,24 +108,30 @@ func (s *MastodonService) TimelineToRSS(feed conf.Feed) (string, error) {
 			}
 		}
 		image := ""
-		if len(st.MediaAttachments) > 0 && st.MediaAttachments[0].PreviewURL != "" {
-			image = st.MediaAttachments[0].PreviewURL
+		if len(status.MediaAttachments) > 0 && status.MediaAttachments[0].PreviewURL != "" {
+			image = status.MediaAttachments[0].PreviewURL
 		}
 
-		var link = st.URL
-		if st.Reblog != nil {
-			link = st.Reblog.URL
+		title := status.Content
+		if len(title) == 0 {
+			title = "(无内容)"
 		}
+		link := status.URL
 
-		var title = st.Content
-		if len(title) == 0 && st.Reblog != nil {
-			title = st.Reblog.Content
+		description := status.Content + mediaHTML
+		if isReblog {
+			// 拼接原作者
+			origAuthor := status.Account.Acct
+			if origAuthor == "" {
+				origAuthor = status.Account.DisplayName
+			}
+			description = fmt.Sprintf("转嘟 @%s: %s%s", origAuthor, status.Content, mediaHTML)
 		}
 
 		items = append(items, RSSItem{
 			Title:       title,
 			Link:        link,
-			Description: st.Content + mediaHTML,
+			Description: description,
 			PubDate:     st.CreatedAt.Format(time.RFC1123Z),
 			GUID:        string(st.ID),
 			Author:      author,
