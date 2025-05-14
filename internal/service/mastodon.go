@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/mattn/go-mastodon"
+	"github.com/mmcdole/gofeed"
 	"go.orx.me/apps/unifeed/internal/conf"
 )
 
@@ -35,12 +36,7 @@ type Channel struct {
 	Items []Item `xml:"item"`
 }
 
-type Item struct {
-	Title       string `xml:"title"`
-	Link        string `xml:"link"`
-	Description string `xml:"description"`
-	PubDate     string `xml:"pubDate"`
-}
+type Item gofeed.Item
 
 func NewMastodonService() *MastodonService {
 	return &MastodonService{}
@@ -74,11 +70,42 @@ func (s *MastodonService) TimelineToRSS(feed conf.Feed) (string, error) {
 				mediaHTML += fmt.Sprintf(`<br><audio controls src="%s">%s</audio>`, m.URL, m.Description)
 			}
 		}
+		guid := string(st.ID)
+		authors := []*gofeed.Person{{
+			Name:  st.Account.DisplayName,
+			Email: "",
+		}}
+		categories := make([]string, 0, len(st.Tags))
+		for _, tag := range st.Tags {
+			categories = append(categories, tag.Name)
+		}
+		enclosures := []*gofeed.Enclosure{}
+		for _, m := range st.MediaAttachments {
+			if m.URL != "" {
+				enclosures = append(enclosures, &gofeed.Enclosure{
+					URL:  m.URL,
+					Type: m.Type,
+				})
+			}
+		}
+		var image *gofeed.Image
+		if len(st.MediaAttachments) > 0 && st.MediaAttachments[0].PreviewURL != "" {
+			image = &gofeed.Image{
+				URL:   st.MediaAttachments[0].PreviewURL,
+				Title: st.MediaAttachments[0].Description,
+			}
+		}
 		items = append(items, Item{
 			Title:       st.Content,
 			Link:        st.URL,
 			Description: st.Content + mediaHTML,
-			PubDate:     st.CreatedAt.Format(time.RFC1123Z),
+			Published:   st.CreatedAt.Format(time.RFC1123Z),
+			GUID:        guid,
+			Content:     st.Content,
+			Authors:     authors,
+			Categories:  categories,
+			Enclosures:  enclosures,
+			Image:       image,
 		})
 	}
 	rss := RSS{
