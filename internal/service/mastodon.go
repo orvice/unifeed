@@ -30,11 +30,21 @@ type RSS struct {
 }
 
 type RSSItem struct {
-	Title       string `xml:"title"`
-	Link        string `xml:"link"`
-	Description string `xml:"description"`
-	PubDate     string `xml:"pubDate"`
-	GUID        string `xml:"guid"`
+	Title       string     `xml:"title"`
+	Link        string     `xml:"link"`
+	Description string     `xml:"description"`
+	PubDate     string     `xml:"pubDate"`
+	GUID        string     `xml:"guid"`
+	Author      string     `xml:"author,omitempty"`
+	Categories  []string   `xml:"category,omitempty"`
+	Enclosure   *Enclosure `xml:"enclosure,omitempty"`
+	Image       string     `xml:"image,omitempty"`
+}
+
+type Enclosure struct {
+	URL    string `xml:"url,attr"`
+	Type   string `xml:"type,attr,omitempty"`
+	Length string `xml:"length,attr,omitempty"`
 }
 
 type Channel struct {
@@ -75,12 +85,35 @@ func (s *MastodonService) TimelineToRSS(feed conf.Feed) (string, error) {
 				mediaHTML += fmt.Sprintf(`<br><audio controls src="%s">%s</audio>`, m.URL, m.Description)
 			}
 		}
+		author := st.Account.DisplayName
+		categories := make([]string, 0, len(st.Tags))
+		for _, tag := range st.Tags {
+			categories = append(categories, tag.Name)
+		}
+		var enclosure *Enclosure
+		for _, m := range st.MediaAttachments {
+			if m.URL != "" {
+				enclosure = &Enclosure{
+					URL:  m.URL,
+					Type: m.Type,
+				}
+				break
+			}
+		}
+		image := ""
+		if len(st.MediaAttachments) > 0 && st.MediaAttachments[0].PreviewURL != "" {
+			image = st.MediaAttachments[0].PreviewURL
+		}
 		items = append(items, RSSItem{
 			Title:       st.Content,
 			Link:        st.URL,
 			Description: st.Content + mediaHTML,
 			PubDate:     st.CreatedAt.Format(time.RFC1123Z),
 			GUID:        string(st.ID),
+			Author:      author,
+			Categories:  categories,
+			Enclosure:   enclosure,
+			Image:       image,
 		})
 	}
 	rss := RSS{
