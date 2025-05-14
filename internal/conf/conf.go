@@ -3,6 +3,7 @@ package conf
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 )
 
@@ -11,29 +12,37 @@ var (
 )
 
 type Config struct {
-	Feeds []Feed
+	Feeds []Feed `json:"feeds" yaml:"feeds"`
 }
 
 type Mastodon struct {
-	Host  string
-	Token string
+	Host  string `json:"host" yaml:"host"`
+	Token string `json:"token" yaml:"token"`
 }
 
 type Bluesky struct {
-	Host      string
-	Handle    string
-	AppKey    string
-	AppSecret string
+	Host      string `json:"host" yaml:"host"`
+	Handle    string `json:"handle" yaml:"handle"`
+	AppKey    string `json:"app_key" yaml:"app_key"`
+	AppSecret string `json:"app_secret" yaml:"app_secret"`
 }
 
 type Feed struct {
-	Name     string
-	Mastodon Mastodon
-	Bluesky  Bluesky
+	Name     string   `json:"name" yaml:"name"`
+	Mastodon Mastodon `json:"mastodon" yaml:"mastodon"`
+	Bluesky  Bluesky  `json:"bluesky" yaml:"bluesky"`
 }
 
 func (c *Config) Print() {
-
+	for _, feed := range c.Feeds {
+		slog.Info("Feed", "name", feed.Name)
+		if feed.Mastodon.Host != "" {
+			slog.Info("Mastodon", "host", feed.Mastodon.Host)
+		}
+		if feed.Bluesky.Host != "" {
+			slog.Info("Bluesky", "host", feed.Bluesky.Host)
+		}
+	}
 }
 
 func LoadConfigFromFile(path string) (*Config, error) {
