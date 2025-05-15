@@ -115,8 +115,8 @@ func (h *Handler) Router(r *gin.Engine) {
 		}
 
 		if feed.RssFeed != "" {
-			// 获取存储的 Feed 项目
-			items, err := h.rssService.GetStoredFeedItems(c.Request.Context(), feed.Name)
+			// 获取格式化的 Feed 项目，确保内容包含摘要
+			items, err := h.rssService.FormatFeedItems(c.Request.Context(), feed.Name)
 			if err != nil {
 				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 				return

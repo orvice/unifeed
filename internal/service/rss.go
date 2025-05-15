@@ -458,11 +458,14 @@ func (s *RssService) UpdateFeed(ctx context.Context, feed conf.Feed) error {
 			continue // 继续处理其他条目
 		}
 
+		logger.Info("Summary",
+			"summary", summary)
+
 		// 创建自定义字段存储摘要，而不是覆盖内容
 		if item.Custom == nil {
-			item.Custom = make(map[string]string)
+			items[i].Custom = make(map[string]string)
 		}
-		item.Custom["summary"] = summary
+		items[i].Custom["summary"] = summary
 	}
 
 	// 存储到 S3
@@ -482,4 +485,83 @@ func (s *RssService) UpdateFeed(ctx context.Context, feed conf.Feed) error {
 
 	metrics.FeedUpdateTotal.WithLabelValues(feed.Name, "success").Inc()
 	return nil
+}
+
+// FormatFeedItems 格式化 Feed 项目，确保内容包含摘要
+func (s *RssService) FormatFeedItems(ctx context.Context, feedName string) ([]map[string]interface{}, error) {
+	startTime := time.Now()
+	defer func() {
+		duration := time.Since(startTime).Seconds()
+		metrics.FeedOperationLatency.WithLabelValues("format_feed_items").Observe(duration)
+	}()
+
+	// 获取存储的 Feed 项目
+	items, err := s.GetStoredFeedItems(ctx, feedName)
+	if err != nil {
+		logger.Error("Failed to get feed items for formatting", err, "feed_name", feedName)
+		metrics.FeedErrors.WithLabelValues(feedName, "format_error").Inc()
+		return nil, fmt.Errorf("failed to get feed items: %w", err)
+	}
+
+	// 处理每个项目
+	for i, item := range items {
+		var content string
+		var summary string
+
+		// 获取内容
+		if c, ok := item["content"]; ok && c != nil {
+			content = fmt.Sprintf("%v", c)
+		}
+
+		// 获取摘要
+		if item["custom"] != nil {
+			if customMap, ok := item["custom"].(map[string]interface{}); ok {
+				if s, ok := customMap["summary"]; ok && s != nil {
+					summary = fmt.Sprintf("%v", s)
+				}
+			}
+		}
+
+		// 如果有摘要，将摘要添加到内容中
+		if summary != "" {
+			// 将摘要添加到内容开头，并用格式清晰地分隔
+			formattedContent := fmt.Sprintf("**摘要**: %s\n\n---\n\n%s", summary, content)
+			item["content"] = formattedContent
+
+			// 保留单独的摘要字段
+			item["summary"] = summary
+		}
+
+		// 确保返回的数据不包含任何可能导致序列化问题的类型
+		items[i] = cleanupItemFields(item)
+	}
+
+	return items, nil
+}
+
+// cleanupItemFields 清理项目字段，确保数据类型适合JSON序列化
+func cleanupItemFields(item map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// 复制并清理必要的字段
+	for k, v := range item {
+		// 跳过custom字段，因为我们已经提取了摘要
+		if k == "custom" {
+			continue
+		}
+
+		// 确保字符串类型的正确性
+		switch val := v.(type) {
+		case string:
+			result[k] = val
+		case []byte:
+			result[k] = string(val)
+		case nil:
+			// 跳过nil值
+		default:
+			result[k] = v
+		}
+	}
+
+	return result
 }
