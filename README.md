@@ -54,7 +54,7 @@ scheduler:
 ### Build
 
 ```bash
-go build -o unifeed cmd/unifeed/main.go
+go build -o unifeed cmd/main.go
 ```
 
 ### Run
