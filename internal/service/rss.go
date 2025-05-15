@@ -455,12 +455,17 @@ func (s *RssService) UpdateFeed(ctx context.Context, feed conf.Feed) error {
 	// 为每个条目生成摘要
 	items := parsedFeed.Items
 	for i, item := range items {
+
+		var content = item.Content
+		if content == "" {
+			content = item.Description
+		}
 		// 生成摘要
-		summary, err := s.aiService.Summarize(ctx, item.Content)
+		summary, err := s.aiService.Summarize(ctx, content)
 		if err != nil {
 			logger.Error("Failed to generate summary",
 				"error", err,
-				"content", item.Content,
+				"content", content,
 				"item_index", i,
 			)
 			metrics.AISummaryErrors.WithLabelValues("summarize_error").Inc()

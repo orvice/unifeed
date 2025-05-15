@@ -3,7 +3,6 @@ package service
 import (
 	"encoding/xml"
 	"fmt"
-	"net/http"
 	"time"
 
 	"context"
@@ -13,7 +12,6 @@ import (
 )
 
 type MastodonService struct {
-	client *http.Client
 }
 
 type MastodonStatus struct {
