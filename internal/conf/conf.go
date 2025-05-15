@@ -47,6 +47,7 @@ type S3Config struct {
 }
 
 type AIConfig struct {
+	Endpoint    string  `json:"endpoint" yaml:"endpoint"`
 	APIKey      string  `json:"api_key" yaml:"api_key"`
 	Model       string  `json:"model" yaml:"model"`
 	MaxTokens   int     `json:"max_tokens" yaml:"max_tokens"`

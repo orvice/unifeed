@@ -16,6 +16,7 @@ type AiConfig struct {
 	Model       string
 	MaxTokens   int
 	Temperature float32
+	Endpoint    string
 }
 
 type AiService struct {
@@ -27,7 +28,14 @@ type AiService struct {
 
 // NewAIService 创建一个新的 AI 服务实例
 func NewAIService(config conf.AIConfig) *AiService {
-	client := openai.NewClient(config.APIKey)
+	var client *openai.Client
+	if config.Endpoint != "" {
+		cfg := openai.DefaultConfig(config.APIKey)
+		cfg.BaseURL = config.Endpoint
+		client = openai.NewClientWithConfig(cfg)
+	} else {
+		client = openai.NewClient(config.APIKey)
+	}
 
 	// 设置默认值
 	if config.Model == "" {
