@@ -40,9 +40,10 @@ s3:
   bucket_name: unifeed
 
 ai:
+  endpoint: ""
   api_key: your-openai-api-key
   model: gpt-3.5-turbo
-  max_tokens: 500
+  max_tokens: 50000
   temperature: 0.7
 
 scheduler:
