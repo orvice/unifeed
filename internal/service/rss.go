@@ -423,36 +423,32 @@ func (s *RssService) UpdateFeed(ctx context.Context, feed conf.Feed) error {
 		metrics.FeedUpdateDuration.WithLabelValues(feed.Name).Observe(duration)
 	}()
 
-	logger := log.FromContext(ctx)
+	logger := log.FromContext(ctx).With("feed_name", feed.Name,
+		"feed_url", feed.RssFeed)
 
 	if feed.RssFeed == "" {
 		err := fmt.Errorf("feed URL is required")
-		logger.Error("Failed to update feed", err,
-			"feed_name", feed.Name,
+		logger.Error("Failed to update feed",
+			"error", err,
 		)
 		metrics.FeedUpdateTotal.WithLabelValues(feed.Name, "error").Inc()
 		return err
 	}
 
-	logger.Info("Starting feed update",
-		"feed_name", feed.Name,
-		"feed_url", feed.RssFeed,
-	)
+	logger.Info("Starting feed update")
 
 	// 解析 Feed
 	parsedFeed, err := s.ParseFeed(ctx, feed.RssFeed)
 	if err != nil {
-		logger.Error("Failed to parse feed during update", err,
-			"feed_name", feed.Name,
-			"feed_url", feed.RssFeed,
+		logger.Error("Failed to parse feed during update",
+			"error", err,
 		)
 		metrics.FeedUpdateTotal.WithLabelValues(feed.Name, "error").Inc()
 		return fmt.Errorf("failed to parse feed: %w", err)
 	}
 
 	logger.Info("Parsed feed",
-		"feed_name", feed.Name,
-		"feed_url", feed.RssFeed,
+
 		"item_count", len(parsedFeed.Items),
 	)
 
@@ -483,8 +479,8 @@ func (s *RssService) UpdateFeed(ctx context.Context, feed conf.Feed) error {
 
 	// 存储到 S3
 	if err := s.StoreFeedItems(ctx, feed.Name, items); err != nil {
-		logger.Error("Failed to store feed items during update", err,
-			"feed_name", feed.Name,
+		logger.Error("Failed to store feed items during update",
+			"error", err,
 			"item_count", len(items),
 		)
 		metrics.FeedUpdateTotal.WithLabelValues(feed.Name, "error").Inc()
@@ -492,7 +488,6 @@ func (s *RssService) UpdateFeed(ctx context.Context, feed conf.Feed) error {
 	}
 
 	logger.Info("Successfully updated feed",
-		"feed_name", feed.Name,
 		"item_count", len(items),
 	)
 
