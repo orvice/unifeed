@@ -447,13 +447,23 @@ func (s *RssService) UpdateFeed(ctx context.Context, feed conf.Feed) error {
 		return fmt.Errorf("failed to parse feed: %w", err)
 	}
 
+	logger.Info("Parsed feed",
+		"feed_name", feed.Name,
+		"feed_url", feed.RssFeed,
+		"item_count", len(parsedFeed.Items),
+	)
+
 	// 为每个条目生成摘要
 	items := parsedFeed.Items
 	for i, item := range items {
 		// 生成摘要
 		summary, err := s.aiService.Summarize(ctx, item.Content)
 		if err != nil {
-			logger.Error("Failed to generate summary", fmt.Errorf("summary generation failed: %w", err), "item_index", i)
+			logger.Error("Failed to generate summary",
+				fmt.Errorf("summary generation failed: %w", err),
+				"content", item.Content,
+				"item_index", i,
+			)
 			metrics.AISummaryErrors.WithLabelValues("summarize_error").Inc()
 			continue // 继续处理其他条目
 		}
