@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"butterfly.orx.me/core/log"
 	"github.com/mmcdole/gofeed"
 	"go.orx.me/apps/unifeed/internal/conf"
 	"go.orx.me/apps/unifeed/internal/dao"
@@ -422,6 +423,8 @@ func (s *RssService) UpdateFeed(ctx context.Context, feed conf.Feed) error {
 		metrics.FeedUpdateDuration.WithLabelValues(feed.Name).Observe(duration)
 	}()
 
+	logger := log.FromContext(ctx)
+
 	if feed.RssFeed == "" {
 		err := fmt.Errorf("feed URL is required")
 		logger.Error("Failed to update feed", err,
@@ -460,7 +463,7 @@ func (s *RssService) UpdateFeed(ctx context.Context, feed conf.Feed) error {
 		summary, err := s.aiService.Summarize(ctx, item.Content)
 		if err != nil {
 			logger.Error("Failed to generate summary",
-				fmt.Errorf("summary generation failed: %w", err),
+				"error", err,
 				"content", item.Content,
 				"item_index", i,
 			)
