@@ -112,10 +112,8 @@ func (s *MastodonService) TimelineToRSS(feed conf.Feed) (string, error) {
 			image = status.MediaAttachments[0].PreviewURL
 		}
 
-		title := status.Content
-		if len(title) == 0 {
-			title = "(无内容)"
-		}
+		// Construct title using author's handle and nickname
+		title := fmt.Sprintf("%s (@%s)", status.Account.DisplayName, status.Account.Acct)
 		link := status.URL
 
 		description := status.Content + mediaHTML
