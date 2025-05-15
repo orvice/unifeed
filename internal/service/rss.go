@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -171,55 +173,92 @@ func (s *RssService) GetStoredFeedItems(ctx context.Context, feedName string) ([
 
 	logger.Info("Retrieving stored feed items", "feed_name", feedName)
 
-	// 从 S3 获取存储的 Feed 项目
-	key := fmt.Sprintf("feeds/%s/items.json", feedName)
-	var reader io.Reader
-	var err error
+	// 获取 item keys
+	var items []map[string]interface{}
+	prefix := fmt.Sprintf("feeds/%s/items/", feedName)
 
-	err = s.retryWithBackoff(ctx, "get_feed_items", func() error {
-		reader, err = s.s3Client.GetObject(ctx, key)
-		return err
-	})
-
+	// 列出所有匹配前缀的对象
+	objectInfos, err := s.s3Client.ListObjects(ctx, prefix)
 	if err != nil {
-		logger.Error("Failed to get feed items from S3", err,
+		logger.Error("Failed to list feed item keys from S3", err,
 			"feed_name", feedName,
-			"key", key,
+			"prefix", prefix,
 		)
-		metrics.S3OperationTotal.WithLabelValues("get", "error").Inc()
-		metrics.S3OperationErrors.WithLabelValues("get", "s3_error").Inc()
+		metrics.S3OperationTotal.WithLabelValues("list", "error").Inc()
+		metrics.S3OperationErrors.WithLabelValues("list", "s3_error").Inc()
 		metrics.FeedErrors.WithLabelValues(feedName, "s3_error").Inc()
-		return nil, fmt.Errorf("failed to get feed items: %w", err)
+		return nil, fmt.Errorf("failed to list feed items: %w", err)
 	}
 
-	// 读取数据
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		logger.Error("Failed to read feed items data", err,
-			"feed_name", feedName,
-			"key", key,
-		)
+	// 并行获取每个 item
+	var wg sync.WaitGroup
+	itemChan := make(chan map[string]interface{}, len(objectInfos))
+	errChan := make(chan error, len(objectInfos))
+
+	for _, objInfo := range objectInfos {
+		wg.Add(1)
+		go func(key string) {
+			defer wg.Done()
+			var reader io.Reader
+			var err error
+
+			err = s.retryWithBackoff(ctx, "get_feed_item", func() error {
+				reader, err = s.s3Client.GetObject(ctx, key)
+				return err
+			})
+
+			if err != nil {
+				logger.Error("Failed to get feed item from S3", err,
+					"feed_name", feedName,
+					"key", key,
+				)
+				errChan <- err
+				return
+			}
+
+			// 读取数据
+			data, err := io.ReadAll(reader)
+			if err != nil {
+				logger.Error("Failed to read feed item data", err,
+					"feed_name", feedName,
+					"key", key,
+				)
+				errChan <- err
+				return
+			}
+
+			var item map[string]interface{}
+			if err := json.Unmarshal(data, &item); err != nil {
+				logger.Error("Failed to unmarshal feed item", err,
+					"feed_name", feedName,
+					"data_size", len(data),
+				)
+				errChan <- err
+				return
+			}
+
+			itemChan <- item
+		}(objInfo.Key)
+	}
+
+	// 等待所有 goroutine 完成
+	wg.Wait()
+	close(itemChan)
+	close(errChan)
+
+	// 处理错误
+	if len(errChan) > 0 {
+		err := <-errChan
 		metrics.S3OperationTotal.WithLabelValues("get", "error").Inc()
 		metrics.S3OperationErrors.WithLabelValues("get", "read_error").Inc()
 		metrics.FeedErrors.WithLabelValues(feedName, "read_error").Inc()
-		return nil, fmt.Errorf("failed to read feed items: %w", err)
+		return nil, fmt.Errorf("failed to read some feed items: %w", err)
 	}
 
-	var items []map[string]interface{}
-	if err := json.Unmarshal(data, &items); err != nil {
-		logger.Error("Failed to unmarshal feed items", err,
-			"feed_name", feedName,
-			"data_size", len(data),
-		)
-		metrics.S3OperationTotal.WithLabelValues("get", "error").Inc()
-		metrics.S3OperationErrors.WithLabelValues("get", "unmarshal_error").Inc()
-		metrics.FeedErrors.WithLabelValues(feedName, "unmarshal_error").Inc()
-		return nil, fmt.Errorf("failed to unmarshal feed items: %w", err)
+	// 收集所有 item
+	for item := range itemChan {
+		items = append(items, item)
 	}
-
-	// 更新缓存
-	s.cache.Store(cacheKey, items)
-	metrics.FeedCacheMisses.Inc()
 
 	// 记录项目大小
 	for _, item := range items {
@@ -227,6 +266,10 @@ func (s *RssService) GetStoredFeedItems(ctx context.Context, feedName string) ([
 			metrics.FeedItemSize.WithLabelValues(feedName).Observe(float64(len(data)))
 		}
 	}
+
+	// 更新缓存
+	s.cache.Store(cacheKey, items)
+	metrics.FeedCacheMisses.Inc()
 
 	return items, nil
 }
@@ -254,45 +297,116 @@ func (s *RssService) StoreFeedItems(ctx context.Context, feedName string, items 
 		"item_count", len(items),
 	)
 
-	// 将项目转换为 JSON
-	data, err := json.Marshal(items)
-	if err != nil {
-		logger.Error("Failed to marshal feed items", err)
-		metrics.S3OperationTotal.WithLabelValues("store", "error").Inc()
-		metrics.S3OperationErrors.WithLabelValues("store", "marshal_error").Inc()
-		metrics.FeedErrors.WithLabelValues(feedName, "marshal_error").Inc()
-		return fmt.Errorf("failed to marshal items: %w", err)
+	// 存储每个 item 到 S3
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(items))
+
+	for i, item := range items {
+		wg.Add(1)
+		go func(idx int, feedItem *gofeed.Item) {
+			defer wg.Done()
+
+			// 为 item 生成唯一标识符
+			itemID := feedItem.GUID
+			if itemID == "" {
+				// 如果没有 GUID，使用链接或标题作为备选
+				if feedItem.Link != "" {
+					itemID = feedItem.Link
+				} else {
+					itemID = feedItem.Title
+				}
+			}
+
+			// 创建安全的文件名
+			safeID := s.sanitizeID(itemID)
+
+			// 生成存储路径
+			objectName := fmt.Sprintf("feeds/%s/items/%s.json", feedName, safeID)
+
+			// 将项目转换为 JSON
+			data, err := json.Marshal(feedItem)
+			if err != nil {
+				logger.Error("Failed to marshal feed item", err,
+					"feed_name", feedName,
+					"item_index", idx,
+				)
+				errChan <- fmt.Errorf("failed to marshal item: %w", err)
+				return
+			}
+
+			// 存储到 S3
+			if err := s.s3Client.PutObject(ctx, objectName, data, "application/json"); err != nil {
+				logger.Error("Failed to store item in S3", err,
+					"feed_name", feedName,
+					"object_name", objectName,
+				)
+				errChan <- fmt.Errorf("failed to store item in S3: %w", err)
+				return
+			}
+
+			logger.Debug("Successfully stored feed item",
+				"feed_name", feedName,
+				"object_name", objectName,
+				"data_size", len(data),
+			)
+
+			metrics.S3OperationTotal.WithLabelValues("store", "success").Inc()
+			metrics.S3ObjectSize.WithLabelValues("store").Observe(float64(len(data)))
+		}(i, item)
 	}
 
-	// 生成存储路径
-	objectName := fmt.Sprintf("feeds/%s/items.json", feedName)
+	// 等待所有 goroutine 完成
+	wg.Wait()
+	close(errChan)
 
-	// 存储到 S3
-	if err := s.s3Client.PutObject(ctx, objectName, data, "application/json"); err != nil {
-		logger.Error("Failed to store items in S3", err,
-			"feed_name", feedName,
-			"object_name", objectName,
-		)
+	// 处理错误
+	if len(errChan) > 0 {
+		err := <-errChan
 		metrics.S3OperationTotal.WithLabelValues("store", "error").Inc()
 		metrics.S3OperationErrors.WithLabelValues("store", "s3_error").Inc()
 		metrics.FeedErrors.WithLabelValues(feedName, "s3_error").Inc()
-		return fmt.Errorf("failed to store items in S3: %w", err)
+		return fmt.Errorf("failed to store some items in S3: %w", err)
 	}
 
 	// 更新缓存
 	s.cache.Store(fmt.Sprintf("items:%s", feedName), items)
 
-	logger.Info("Successfully stored feed items",
+	logger.Info("Successfully stored all feed items",
 		"feed_name", feedName,
-		"object_name", objectName,
-		"data_size", len(data),
+		"item_count", len(items),
 	)
 
-	metrics.S3OperationTotal.WithLabelValues("store", "success").Inc()
-	metrics.S3ObjectSize.WithLabelValues("store").Observe(float64(len(data)))
 	metrics.FeedItemsTotal.WithLabelValues(feedName).Set(float64(len(items)))
 
 	return nil
+}
+
+// sanitizeID 清理标识符以便安全用作文件名
+func (s *RssService) sanitizeID(id string) string {
+	// 简单替换不安全的字符
+	replacer := strings.NewReplacer(
+		"/", "_",
+		"\\", "_",
+		":", "_",
+		"*", "_",
+		"?", "_",
+		"\"", "_",
+		"<", "_",
+		">", "_",
+		"|", "_",
+		" ", "_",
+	)
+
+	// 如果 ID 过长，截断并添加哈希后缀
+	safeID := replacer.Replace(id)
+	if len(safeID) > 200 {
+		h := sha256.New()
+		h.Write([]byte(id))
+		hash := fmt.Sprintf("%x", h.Sum(nil))[:8]
+		safeID = safeID[:192] + "_" + hash
+	}
+
+	return safeID
 }
 
 // UpdateFeed 更新 Feed
