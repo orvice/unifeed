@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -26,6 +27,12 @@ func NewS3Client() (*S3Client, error) {
 		Secure: config.UseSSL,
 	})
 	if err != nil {
+		// log
+		slog.Error("failed to create S3 client",
+			"endpoint", config.Endpoint,
+			"use_ssl", config.UseSSL,
+			"bucket_name", config.BucketName,
+			"error", err)
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
 	}
 
