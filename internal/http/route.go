@@ -42,8 +42,7 @@ func Router(r *gin.Engine) {
 	handler.Router(r)
 
 	// 启动调度器
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 
 	// 为每个 RSS feed 启动调度任务
 	for _, feed := range conf.Conf.Feeds {

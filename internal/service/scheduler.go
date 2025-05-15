@@ -32,7 +32,7 @@ type Job struct {
 // NewSchedulerService 创建一个新的调度器服务实例
 func NewSchedulerService(rssService *RssService, cfg SchedulerConfig) *SchedulerService {
 	if cfg.UpdateInterval == 0 {
-		cfg.UpdateInterval = time.Hour
+		cfg.UpdateInterval = time.Minute * 10
 	}
 	if cfg.MaxRetries == 0 {
 		cfg.MaxRetries = 3
