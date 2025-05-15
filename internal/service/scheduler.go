@@ -135,9 +135,8 @@ func (s *SchedulerService) updateFeed(ctx context.Context, job *Job) error {
 			time.Sleep(s.config.RetryDelay)
 			continue
 		}
-
 		// 存储到 S3
-		if err := s.rssService.StoreFeedItems(ctx, job.Feed.Name, items); err != nil {
+		if err := s.rssService.StoreFeedItems(ctx, job.Feed.Name, items.Items); err != nil {
 			lastErr = fmt.Errorf("failed to store feed items: %w", err)
 			time.Sleep(s.config.RetryDelay)
 			continue
