@@ -9,11 +9,6 @@ import (
 	"go.orx.me/apps/unifeed/internal/service"
 )
 
-func Router(r *gin.Engine) {
-	handler := NewHandler(service.NewRssService(), service.NewSchedulerService())
-	handler.Router(r)
-}
-
 type Handler struct {
 	rssService       *service.RssService
 	schedulerService *service.SchedulerService

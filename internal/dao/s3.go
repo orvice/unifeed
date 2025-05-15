@@ -9,15 +9,8 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"go.orx.me/apps/unifeed/internal/conf"
 )
-
-type S3Config struct {
-	Endpoint        string
-	AccessKeyID     string
-	SecretAccessKey string
-	UseSSL          bool
-	BucketName      string
-}
 
 type S3Client struct {
 	client     *minio.Client
@@ -25,10 +18,12 @@ type S3Client struct {
 }
 
 // NewS3Client 创建一个新的 S3 客户端实例
-func NewS3Client(cfg S3Config) (*S3Client, error) {
-	client, err := minio.New(cfg.Endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
-		Secure: cfg.UseSSL,
+func NewS3Client() (*S3Client, error) {
+
+	config := conf.Conf.S3
+	client, err := minio.New(config.Endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(config.AccessKeyID, config.SecretAccessKey, ""),
+		Secure: config.UseSSL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create S3 client: %w", err)
@@ -36,18 +31,18 @@ func NewS3Client(cfg S3Config) (*S3Client, error) {
 
 	s3Client := &S3Client{
 		client:     client,
-		bucketName: cfg.BucketName,
+		bucketName: config.BucketName,
 	}
 
 	// 确保 bucket 存在
 	ctx := context.Background()
-	exists, err := client.BucketExists(ctx, cfg.BucketName)
+	exists, err := client.BucketExists(ctx, config.BucketName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check bucket existence: %w", err)
 	}
 
 	if !exists {
-		err = client.MakeBucket(ctx, cfg.BucketName, minio.MakeBucketOptions{})
+		err = client.MakeBucket(ctx, config.BucketName, minio.MakeBucketOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create bucket: %w", err)
 		}
