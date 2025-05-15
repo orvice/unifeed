@@ -44,6 +44,7 @@ type FeedItem struct {
 	Link        string    `json:"link"`
 	Description string    `json:"description"`
 	Published   time.Time `json:"published"`
+	Content     string    `json:"content,omitempty"`
 	Summary     string    `json:"summary,omitempty"`
 }
 
@@ -257,6 +258,10 @@ func (s *RssService) GetStoredFeedItems(ctx context.Context, feedName string) ([
 
 	// 收集所有 item
 	for item := range itemChan {
+		// 确保摘要字段存在于结果中
+		if summary, ok := item["custom"].(map[string]interface{})["summary"]; ok {
+			item["summary"] = summary
+		}
 		items = append(items, item)
 	}
 
@@ -452,7 +457,12 @@ func (s *RssService) UpdateFeed(ctx context.Context, feed conf.Feed) error {
 			metrics.AISummaryErrors.WithLabelValues("summarize_error").Inc()
 			continue // 继续处理其他条目
 		}
-		items[i].Content = summary
+
+		// 创建自定义字段存储摘要，而不是覆盖内容
+		if item.Custom == nil {
+			item.Custom = make(map[string]string)
+		}
+		item.Custom["summary"] = summary
 	}
 
 	// 存储到 S3
