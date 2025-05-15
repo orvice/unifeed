@@ -129,15 +129,9 @@ func (s *SchedulerService) updateFeed(ctx context.Context, job *Job) error {
 	var lastErr error
 	for i := 0; i < s.config.MaxRetries; i++ {
 		// 解析 Feed
-		items, err := s.rssService.ParseFeed(ctx, job.Feed.RssFeed)
+		err := s.rssService.UpdateFeed(ctx, job.Feed)
 		if err != nil {
 			lastErr = fmt.Errorf("failed to parse feed: %w", err)
-			time.Sleep(s.config.RetryDelay)
-			continue
-		}
-		// 存储到 S3
-		if err := s.rssService.StoreFeedItems(ctx, job.Feed.Name, items.Items); err != nil {
-			lastErr = fmt.Errorf("failed to store feed items: %w", err)
 			time.Sleep(s.config.RetryDelay)
 			continue
 		}
