@@ -31,6 +31,7 @@ type RSSItem struct {
 	Title       string     `xml:"title"`
 	Link        string     `xml:"link"`
 	Description string     `xml:"description"`
+	Content     string     `xml:"content"`
 	PubDate     string     `xml:"pubDate"`
 	GUID        string     `xml:"guid"`
 	Author      string     `xml:"author,omitempty"`
@@ -116,18 +117,23 @@ func (s *MastodonService) TimelineToRSS(feed conf.Feed) (string, error) {
 
 		description := status.Content + mediaHTML
 		if isReblog {
-			// 拼接原作者
+			// 拼接原作者和转嘟者
 			origAuthor := status.Account.Acct
 			if origAuthor == "" {
 				origAuthor = status.Account.DisplayName
 			}
-			description = fmt.Sprintf("转嘟 @%s: %s%s", origAuthor, status.Content, mediaHTML)
+			reblogger := status.Reblog.Account.Acct
+			if reblogger == "" {
+				reblogger = status.Reblog.Account.DisplayName
+			}
+			description = fmt.Sprintf("@%s 转嘟 @%s: %s%s", reblogger, origAuthor, status.Content, mediaHTML)
 		}
 
 		items = append(items, RSSItem{
 			Title:       title,
 			Link:        link,
 			Description: description,
+			Content:     description,
 			PubDate:     st.CreatedAt.Format(time.RFC1123Z),
 			GUID:        string(st.ID),
 			Author:      author,
