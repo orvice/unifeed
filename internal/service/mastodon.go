@@ -122,9 +122,10 @@ func (s *MastodonService) TimelineToRSS(feed conf.Feed) (string, error) {
 			if origAuthor == "" {
 				origAuthor = status.Account.DisplayName
 			}
-			reblogger := status.Reblog.Account.Acct
+			// 获取转嘟者信息，使用原始状态中的账户信息
+			reblogger := st.Account.Acct
 			if reblogger == "" {
-				reblogger = status.Reblog.Account.DisplayName
+				reblogger = st.Account.DisplayName
 			}
 			description = fmt.Sprintf("@%s 转嘟 @%s: %s%s", reblogger, origAuthor, status.Content, mediaHTML)
 		}
