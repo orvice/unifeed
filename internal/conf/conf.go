@@ -33,6 +33,7 @@ type Bluesky struct {
 
 type Feed struct {
 	Name     string   `json:"name" yaml:"name"`
+	Title    string   `json:"title" yaml:"title"`
 	Mastodon Mastodon `json:"mastodon" yaml:"mastodon"`
 	Bluesky  Bluesky  `json:"bluesky" yaml:"bluesky"`
 	RssFeed  string   `json:"rss_feed" yaml:"rss_feed"`

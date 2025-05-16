@@ -143,10 +143,15 @@ func (s *MastodonService) TimelineToRSS(feed conf.Feed) (string, error) {
 			Image:       image,
 		})
 	}
+
+	var title = feed.Title
+	if title == "" {
+		title = feed.Name
+	}
 	rss := RSS{
 		Version: "2.0",
 		Channel: Channel{
-			Title: feed.Name,
+			Title: title,
 			Link:  feed.Mastodon.Host,
 			Items: items,
 		},
